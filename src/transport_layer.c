@@ -84,6 +84,10 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 	int data_size = sizeof(tp_pkg->data);
 	int original_size = tp_pkg->size;
 
+	transport_package_t *pkg_cpy = malloc(sizeof(transport_package_t));
+	pkg_cpy->data = tp_pkg->data;
+	pkg_cpy->size = tp_pkg->size;
+
 	if(data_size == original_size){
 		osi_tp2app(tp_layer->osi_stack, tp_pkg->data, tp_pkg->size);
 	} else {
@@ -93,7 +97,7 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
-
+	
 }
 
 
