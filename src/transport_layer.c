@@ -8,6 +8,7 @@
 
 #include "transport_layer.h"
 #include "transport_package_impl.h"
+#include "application_layer_impl.h"
 
 /// <summary>Sets a tick timer object for the specified transport layer.</summary>
 /// <param name="tp_layer">A reference to the transport layer instance that sets the timer.</param>
@@ -30,11 +31,10 @@ struct transport_layer
 	/// <summary>A reference to the OSI-stack the transport layer belong to.</summary>
 	osi_stack_t* osi_stack;
 
-	// STUDENTS BEGIN:
-	// Extend this structure with your own status variables for the transport layer.
-	// int status;
+	tick_timer_t* send_timer;
+	tick_timer_t* validate_timer;
 
-	// STUDENTS END
+
 };
 
 // STUDENTS BEGIN:
@@ -44,11 +44,16 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 {
 	// Remember to assign the osi_stack parameter to the new transport layer object you create in this function.
 	transport_layer_t *transport_layer = malloc(sizeof(transport_layer_t));
+	//transport_layer->send_timer = malloc(sizeof(tick_timer_t));
+	//transport_layer->validate_timer = malloc(sizeof(tick_timer_t));
+	 
 	transport_layer->osi_stack = osi_stack;
-	// transport_layer->status = 0; 
+	transport_layer->send_timer = NULL;
+	transport_layer->validate_timer = NULL;
+	
 	
 	if(transport_layer == NULL){
-		errno("Out of memory");
+		//errno("Out of memory");
 		return 0;
 	}
 
@@ -62,42 +67,57 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 
 void transport_layer_destroy(transport_layer_t* tp_layer)
 {
-	transport_layer_t *x = tp_layer;
-
-	free(x->osi_stack);
-	// free(x->status);
-	free(x);
-	
+	if(tp_layer){
+		//free(x->send_timer);
+		//free(x->validate_timer);
+		free(tp_layer);
+	}	
 }
 
 void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t size)
-{
-	transport_package_t *package = malloc(sizeof(transport_package_t));
-	package->data = data;
-	package->size = size;
+{	
+	if(tp_layer->send_timer == NULL){
+		transport_layer_timer_set(tp_layer, tp_layer->send_timer, 4);
+	}
 
-	osi_tp2nw(tp_layer->osi_stack, package); 
+	transport_package_t *pack = transport_pkg_create(data, size);
+
+	pack = transport_pkg_copy(pack);
+
+	osi_tp2nw(tp_layer->osi_stack, pack); 
+	timer_tickall();
 }
 
 void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_t* tp_pkg)
 {
-	int data_size = sizeof(tp_pkg->data);
-	int original_size = tp_pkg->size;
+	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
+	int data_size = sizeof((application_data_node_t) pkg_cpy->data);
+	int original_size = pkg_cpy->size;
 
-	transport_package_t *pkg_cpy = malloc(sizeof(transport_package_t));
-	pkg_cpy->data = tp_pkg->data;
-	pkg_cpy->size = tp_pkg->size;
+	printf("DATA_SIZE: %d\n", data_size);
+	printf("ORIGINAL_SIZE: %d\n\n\n\n\n", original_size);
 
-	if(data_size == original_size){
-		osi_tp2app(tp_layer->osi_stack, tp_pkg->data, tp_pkg->size);
-	} else {
-		errno("invalid packet");
-	}
+	
+
+	//if(data_size == original_size){
+	pkg_cpy->corrupt = false;
+	osi_tp2app(tp_layer->osi_stack, pkg_cpy->data, pkg_cpy->size);
+	//} else {
+		//printf("ADAM OG EVA\n\n\n\n");
+		//errno("invalid packet");
+		//pack->corrupt = true;
+	//}
 }	
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
-	
+	if(tp_layer->validate_timer != NULL){
+		if(tp_layer->validate_timer->ctx == true){
+			tp_layer->send_timer = tp_layer->validate_timer;
+			
+			timer_unset
+		} 
+	}
 }
 
 
