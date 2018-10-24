@@ -33,7 +33,9 @@ struct transport_layer
 
 	tick_timer_t* send_timer;
 	tick_timer_t* validate_timer;
-
+	
+	transport_packet_t* app_window;
+	transport_packet_t* net_window;
 
 };
 
@@ -50,6 +52,8 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 	transport_layer->osi_stack = osi_stack;
 	transport_layer->send_timer = NULL;
 	transport_layer->validate_timer = NULL;
+	tranpsort_layer->app_window[4];
+	transport_layer->net_window[4];
 	
 	
 	if(transport_layer == NULL){
@@ -81,43 +85,69 @@ void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t s
 	}
 
 	transport_package_t *pack = transport_pkg_create(data, size);
-
 	pack = transport_pkg_copy(pack);
+
+	tp_layer->app_window[tp_layer->send_timer->tick_count] = pack;
 
 	osi_tp2nw(tp_layer->osi_stack, pack); 
 	timer_tickall();
+	
+	tp_layer->send_timer->ctx = pack;
 }
 
 void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_t* tp_pkg)
 {
-	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
-	int data_size = sizeof((application_data_node_t) pkg_cpy->data);
-	int original_size = pkg_cpy->size;
 
-	printf("DATA_SIZE: %d\n", data_size);
-	printf("ORIGINAL_SIZE: %d\n\n\n\n\n", original_size);
-
+	transport_package_t *a_packet = tp_layer->app_window[tp_layer->send_timer->tick_count]
+	transport_package_t *n_packet = tp_layer->net_window[tp_layer->send_timer->tick_count]
 	
+	if(a_packet->size == n_packet->size){
+		pkg_cpy->corrupt = false;
 
-	//if(data_size == original_size){
-	pkg_cpy->corrupt = false;
-	osi_tp2app(tp_layer->osi_stack, pkg_cpy->data, pkg_cpy->size);
-	//} else {
+	} else {
 		//printf("ADAM OG EVA\n\n\n\n");
 		//errno("invalid packet");
-		//pack->corrupt = true;
-	//}
+		pack->corrupt = true;
+	}
+	
+}
+
+	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
+	tp_layer->net_window[tp_layer->send_timer->tick_count] = pkg_cpy
+	tp_layer->
+
+
+	if(tp_layer->validate_timer != NULL){
+
+
+		if(tp_layer->validate_timer->ctx->corrupt == true){
+			transport_package_t *packet = tp_layer->net_window[tp_layer->validate_timer->tick_count];
+			
+			if(packet->corrupt == true){
+				for(int i = 0; i <= 4; i++){
+					osi_tp2nw(tp_layer->osi_stack, tp_layer->app_window[]);
+				}
+				transport_layer_onLayerTimeout(tp_layer);
+			} else {
+				osi_tp2app(tp_layer->osi_stack, packet->data, packet->size);
+				transport_layer_timer_set()
+			}
+		}
+	}
+
 }	
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
-	if(tp_layer->validate_timer != NULL){
-		if(tp_layer->validate_timer->ctx == true){
-			tp_layer->send_timer = tp_layer->validate_timer;
-			
-			timer_unset
-		} 
+	if(tp_layer->validate_timer == NULL || tp_layer->validate_timer->tick_count == tp_layer->validate_timer->target_ticks){
+		transport_layer_timer_set(tp_layer, tp_layer->validate_timer, 4);
+	} 
+
+	if(tp_layer->send_timer->tick_count == tp_layer->send_timer->target_ticks){
+		transport_layer_timer_set(tp_layer, tp_layer->validate_timer, 4);
 	}
+
+	transport_layer_onNwReceive(tp_layer, tp_layer->app_window[tp_layer->validate_timer->tick_count]);
 }
 
 
