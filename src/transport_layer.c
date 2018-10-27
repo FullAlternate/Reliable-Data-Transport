@@ -92,18 +92,17 @@ void transport_layer_destroy(transport_layer_t* tp_layer)
 
 void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t size)
 {	
-	printf("\n\ntransport_layer_app - adress tp_layer: %p\n", tp_layer);
-	printf("transport_layer_app - adress data: %p\n", data);
-	printf("transport_layer_app - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 
 	transport_package_t *pack = malloc(sizeof(transport_package_t));
 	pack = transport_pkg_create(data, size);
-	 
-	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
 	
 	pack->checksum = checksum(pack->data, pack->size);
 	tp_layer->window[tp_layer->current] = pack;
 
+	printf("\n\ntransport_layer_app - adress tp_layer: %p\n", tp_layer);
+	printf("transport_layer_app - adress data: %p\n", data);
+	printf("transport_layer_app - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
+	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
 	printf("transport_layer_app - checksum: %d\n", tp_layer->window[tp_layer->current]->checksum);
 	printf("transport_layer_app - current: %d\n\n\n\n\n", tp_layer->current);
 
@@ -120,16 +119,15 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 {
 	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
 
-	printf("\n\ntransport_layer_net - adress tp_layer: %p\n", tp_layer);
-	printf("transport_layer_net - adress tp_pkg: %p\n", tp_pkg);
-	printf("transport_layer_net - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 
-	//printf("DATA_SIZE: %d\n", );
-	printf("transport_layer_net - current: %d\n", tp_layer->current);
 
 	int32_t localchecksum = checksum(pkg_cpy->data, pkg_cpy->size);
 	tp_layer->window[tp_layer->current] = pkg_cpy;
 
+	printf("\n\ntransport_layer_net - adress tp_layer: %p\n", tp_layer);
+	printf("transport_layer_net - adress tp_pkg: %p\n", tp_pkg);
+	printf("transport_layer_net - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
+	printf("transport_layer_net - current: %d\n", tp_layer->current);
 	printf("transport_layer_net - BEFORE CHECKSUM PRINTF\n");
 	printf("transport_layer_net - checksum local: %d\n", localchecksum);
 	printf("transport_layer_net - checksum window: %d\n", tp_layer->window[tp_layer->current]->checksum);
@@ -155,6 +153,7 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
 	printf("timeout - adress tp_layer: %p\n\n\n\n\n", tp_layer);
+
 	tp_layer->fail_count = tp_layer->current;
 	transport_layer_timer_set(tp_layer, tp_layer->timeout, 10000);
 }
@@ -189,6 +188,7 @@ uint16_t checksum(void* data, size_t size){
 
 void resend_window(transport_layer_t* tp_layer){
 	printf("resend_window - adress tp_layer: %p\n\n\n\n", tp_layer);
+	
 	transport_package_t *pack = malloc(sizeof(transport_package_t));
 	int fc = tp_layer->fail_count;
 
