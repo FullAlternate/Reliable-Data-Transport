@@ -35,11 +35,9 @@ struct transport_layer
 	osi_stack_t* osi_stack;
 	tick_timer_t* timeout;
 
-	transport_package_t* app_window[4];
-	transport_package_t* net_window[4];
+	transport_package_t* window[4];
 
-	int app_current;
-	int net_current;
+	int current;
 	int fail_count;
 };
 
@@ -54,21 +52,16 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 	printf("transport_layer_create - adress tp_layer: %p\n\n\n\n", osi_stack);
 
 	transport_layer->osi_stack = osi_stack;
-	transport_layer->app_current = 0;
-	transport_layer->net_current = 0;
+	transport_layer->current = 0;
 	transport_layer->fail_count = 5;
 
-	//transport_layer->app_window = calloc(4, sizeof(transport_package_t));
-	//transport_layer->net_window = calloc(4, sizeof(transport_package_t));
+	//transport_layer->window = calloc(4, sizeof(transport_package_t));
 
 	for(int i = 0; i <= 3; i++){
-		transport_layer->app_window[i] = malloc(sizeof(transport_package_t));
-		transport_layer->app_window[i]->data = NULL;
-		transport_layer->app_window[i]->size = 0;
-		transport_layer->app_window[i]->checksum = 0;
-		
-		transport_layer->net_window[i] = malloc(sizeof(transport_package_t));
-
+		transport_layer->window[i] = malloc(sizeof(transport_package_t));
+		transport_layer->window[i]->data = NULL;
+		transport_layer->window[i]->size = 0;
+		transport_layer->window[i]->checksum = 0;
 	}
 	
 
@@ -108,15 +101,14 @@ void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t s
 	 
 	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
 	
+	pack->checksum = checksum(pack->data, pack->size);
+	tp_layer->window[tp_layer->current] = pack;
 
-	tp_layer->app_window[tp_layer->app_current] = pack;
-	tp_layer->app_window[tp_layer->app_current]->checksum = checksum(pack->data, pack->size);
+	printf("transport_layer_app - checksum: %d\n", tp_layer->window[tp_layer->current]->checksum);
+	printf("transport_layer_app - current: %d\n\n\n\n\n", tp_layer->current);
 
-	printf("transport_layer_app - checksum: %d\n", tp_layer->app_window[tp_layer->app_current]->checksum);
-	printf("transport_layer_app - app_current: %d\n\n\n\n\n", tp_layer->app_current);
-
-	tp_layer->app_current = tp_layer->app_current + 1;
-	tp_layer->app_current = tp_layer->app_current % 4;	
+	tp_layer->current++;
+	tp_layer->current = tp_layer->current % 4;	
 
 	osi_tp2nw(tp_layer->osi_stack, pack);
 
@@ -133,38 +125,37 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 	printf("transport_layer_net - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 
 	//printf("DATA_SIZE: %d\n", );
-	printf("transport_layer_net - app_current: %d", tp_layer->app_current);
-	printf("transport_layer_net - net_current: %d", tp_layer->net_current);
+	printf("transport_layer_net - current: %d\n", tp_layer->current);
 
-	tp_layer->net_window[tp_layer->net_current] = pkg_cpy;
-	tp_layer->net_window[tp_layer->net_current]->checksum = checksum(pkg_cpy->data, pkg_cpy->size);
+	int32_t localchecksum = checksum(pkg_cpy->data, pkg_cpy->size);
+	tp_layer->window[tp_layer->current] = pkg_cpy;
 
 	printf("transport_layer_net - BEFORE CHECKSUM PRINTF\n");
-	printf("transport_layer_net - checksum app_window: %d\n", tp_layer->app_window[tp_layer->app_current]->checksum);
-	printf("transport_layer_net - checksum net_window: %d\n", tp_layer->net_window[tp_layer->net_current]->checksum);
+	printf("transport_layer_net - checksum local: %d\n", localchecksum);
+	printf("transport_layer_net - checksum window: %d\n", tp_layer->window[tp_layer->current]->checksum);
 	printf("transport_layer_net - AFTER CHECKSUM PRINTF\n\n\n\n\n");
 	
 
 	if(tp_layer->fail_count == 5){
-		if(tp_layer->app_window[tp_layer->net_current]->checksum != tp_layer->net_window[tp_layer->net_current]->checksum){
+		while(tp_layer->window[tp_layer->current]->checksum != localchecksum){
 			timer_tickall();
 		}
 
-		osi_tp2app(tp_layer->osi_stack, tp_layer->net_window[tp_layer->net_current]->data, tp_layer->net_window[tp_layer->net_current]->size);
+		osi_tp2app(tp_layer->osi_stack, tp_layer->window[tp_layer->current]->data, tp_layer->window[tp_layer->current]->size);
 	}
 
-	if(tp_layer->net_current == (tp_layer->fail_count - 1) % 4 && tp_layer->fail_count != 5){
+	if(tp_layer->current == (tp_layer->fail_count - 1) % 4 && tp_layer->fail_count != 5){
 		resend_window(tp_layer);
 	}
 
-	tp_layer->net_current = tp_layer->net_current + 1;
-	tp_layer->net_current = tp_layer->net_current % 4;
+	tp_layer->current = tp_layer->current + 1;
+	tp_layer->current = tp_layer->current % 4;
 }	
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
 	printf("timeout - adress tp_layer: %p\n\n\n\n\n", tp_layer);
-	tp_layer->fail_count = tp_layer->net_current;
+	tp_layer->fail_count = tp_layer->current;
 	transport_layer_timer_set(tp_layer, tp_layer->timeout, 10000);
 }
 
@@ -202,7 +193,7 @@ void resend_window(transport_layer_t* tp_layer){
 	int fc = tp_layer->fail_count;
 
 	for(int i = 0; i <= 3; i++){
-		pack = tp_layer->app_window[fc];
+		pack = tp_layer->window[fc];
 
 		osi_tp2nw(tp_layer->osi_stack, pack);
 
