@@ -97,17 +97,18 @@ void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t s
 	pack = transport_pkg_create(data, size);
 	
 	pack->checksum = checksum(pack->data, pack->size);
-	tp_layer->window[tp_layer->current] = pack;
+	pack->original_package = pack;
+	//tp_layer->window[tp_layer->current] = pack;
 
 	printf("\n\ntransport_layer_app - adress tp_layer: %p\n", tp_layer);
 	printf("transport_layer_app - adress data: %p\n", data);
 	printf("transport_layer_app - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
-	printf("transport_layer_app - checksum: %d\n", tp_layer->window[tp_layer->current]->checksum);
+	printf("transport_layer_app - checksum: %d\n", pack->checksum);
 	printf("transport_layer_app - current: %d\n\n\n\n\n", tp_layer->current);
 
-	tp_layer->current++;
-	tp_layer->current = tp_layer->current % 4;	
+	//tp_layer->current++;
+	//tp_layer->current = tp_layer->current % 4;	
 
 	osi_tp2nw(tp_layer->osi_stack, pack);
 
@@ -117,12 +118,14 @@ void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t s
 
 void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_t* tp_pkg)
 {
+	
 	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
-
-
+	tp_pkg->original_package->checksum
 
 	int32_t localchecksum = checksum(pkg_cpy->data, pkg_cpy->size);
 	tp_layer->window[tp_layer->current] = pkg_cpy;
+
+	
 
 	printf("\n\ntransport_layer_net - adress tp_layer: %p\n", tp_layer);
 	printf("transport_layer_net - adress tp_pkg: %p\n", tp_pkg);
@@ -131,23 +134,35 @@ void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_
 	printf("transport_layer_net - BEFORE CHECKSUM PRINTF\n");
 	printf("transport_layer_net - checksum local: %d\n", localchecksum);
 	printf("transport_layer_net - checksum window: %d\n", tp_layer->window[tp_layer->current]->checksum);
+	printf("transport_layer_net - fail_count: %d\n", tp_layer->fail_count);
 	printf("transport_layer_net - AFTER CHECKSUM PRINTF\n\n\n\n\n");
 	
 
-	if(tp_layer->fail_count == 5){
-		while(tp_layer->window[tp_layer->current]->checksum != localchecksum){
-			timer_tickall();
-		}
 
+	while(tp_layer->window[tp_layer->current]->checksum != localchecksum && tp_layer->fail_count == 5){
+		//printf("targetticks: %d\n", tp_layer->timeout->target_ticks);
+		tp_layer->timeout->tick_count++;
+
+		if(tp_layer->timeout->tick_count == tp_layer->timeout->target_ticks){
+			transport_layer_onLayerTimeout(tp_layer);
+		}
+	}
+
+	if(tp_layer->fail_count == 5){
+		printf("if validate KUUUUUK\n");
 		osi_tp2app(tp_layer->osi_stack, tp_layer->window[tp_layer->current]->data, tp_layer->window[tp_layer->current]->size);
 	}
 
-	if(tp_layer->current == (tp_layer->fail_count - 1) % 4 && tp_layer->fail_count != 5){
+	tp_layer->current++;
+	tp_layer->current = tp_layer->current % 4;
+
+	//printf("MODULO: %d\n", stop);
+	if(tp_layer->current == tp_layer->fail_count && tp_layer->fail_count != 5){
+		printf("if resend KUUUUUK\n");
 		resend_window(tp_layer);
 	}
 
-	tp_layer->current = tp_layer->current + 1;
-	tp_layer->current = tp_layer->current % 4;
+	
 }	
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
@@ -155,7 +170,7 @@ void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 	printf("timeout - adress tp_layer: %p\n\n\n\n\n", tp_layer);
 
 	tp_layer->fail_count = tp_layer->current;
-	transport_layer_timer_set(tp_layer, tp_layer->timeout, 10000);
+	tp_layer->timeout->tick_count = 0;
 }
 
 uint16_t checksum(void* data, size_t size){
@@ -188,12 +203,12 @@ uint16_t checksum(void* data, size_t size){
 
 void resend_window(transport_layer_t* tp_layer){
 	printf("resend_window - adress tp_layer: %p\n\n\n\n", tp_layer);
-	
+
 	transport_package_t *pack = malloc(sizeof(transport_package_t));
 	int fc = tp_layer->fail_count;
 
 	for(int i = 0; i <= 3; i++){
-		pack = tp_layer->window[fc];
+		pack = tp_layer->window[fc]->original_package;
 
 		osi_tp2nw(tp_layer->osi_stack, pack);
 
@@ -201,7 +216,7 @@ void resend_window(transport_layer_t* tp_layer){
 	}
 
 	tp_layer->fail_count = 5;
-	free(pack);
+	//free(pack);
 }
 
 
