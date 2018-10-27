@@ -9,6 +9,7 @@
 /// <summary>Header inclusion macro.</summary>
 #define TRANSPORT_PACKAGE_IMPL_H 1
 
+#include <stdint.h>
 #include "transport_package.h"
 
 /// <summary>Implements the <see cref="transport_package_t"/> datatype.</summary>
@@ -24,7 +25,7 @@ struct transport_package
 	/// <summary>A reference to the payload of the package.</summary>
 	/// <value>A generic reference to a memory buffer that is at least <see cref="size"/> bytes long, or <c><see cref="NULL"/></c> if the package is empty.</value>
 	void* data;
-	bool corrupt;
+	uint16_t checksum;
 };
 
 #endif // !TRANSPORT_PACKAGE_IMPL_H

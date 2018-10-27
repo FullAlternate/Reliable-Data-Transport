@@ -5,6 +5,9 @@
 /// </summary>
 
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <arpa/inet.h>
 
 #include "transport_layer.h"
 #include "transport_package_impl.h"
@@ -30,13 +33,14 @@ struct transport_layer
 {
 	/// <summary>A reference to the OSI-stack the transport layer belong to.</summary>
 	osi_stack_t* osi_stack;
+	tick_timer_t* timeout;
 
-	tick_timer_t* send_timer;
-	tick_timer_t* validate_timer;
-	
-	transport_packet_t* app_window;
-	transport_packet_t* net_window;
+	transport_package_t* app_window[4];
+	transport_package_t* net_window[4];
 
+	int app_current;
+	int net_current;
+	int fail_count;
 };
 
 // STUDENTS BEGIN:
@@ -45,16 +49,33 @@ struct transport_layer
 transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 {
 	// Remember to assign the osi_stack parameter to the new transport layer object you create in this function.
+	printf("\n\ntransport_layer_create - adress osi_stack: %p\n", osi_stack);
 	transport_layer_t *transport_layer = malloc(sizeof(transport_layer_t));
-	//transport_layer->send_timer = malloc(sizeof(tick_timer_t));
-	//transport_layer->validate_timer = malloc(sizeof(tick_timer_t));
-	 
+	printf("transport_layer_create - adress tp_layer: %p\n\n\n\n", osi_stack);
+
 	transport_layer->osi_stack = osi_stack;
-	transport_layer->send_timer = NULL;
-	transport_layer->validate_timer = NULL;
-	tranpsort_layer->app_window[4];
-	transport_layer->net_window[4];
+	transport_layer->app_current = 0;
+	transport_layer->net_current = 0;
+	transport_layer->fail_count = 5;
+
+	//transport_layer->app_window = calloc(4, sizeof(transport_package_t));
+	//transport_layer->net_window = calloc(4, sizeof(transport_package_t));
+
+	for(int i = 0; i <= 3; i++){
+		transport_layer->app_window[i] = malloc(sizeof(transport_package_t));
+		transport_layer->app_window[i]->data = NULL;
+		transport_layer->app_window[i]->size = 0;
+		transport_layer->app_window[i]->checksum = 0;
+		
+		transport_layer->net_window[i] = malloc(sizeof(transport_package_t));
+
+	}
 	
+
+
+
+	transport_layer->timeout = malloc(sizeof(tick_timer_t));
+	transport_layer_timer_set(transport_layer, transport_layer->timeout, 10000);
 	
 	if(transport_layer == NULL){
 		//errno("Out of memory");
@@ -72,82 +93,124 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 void transport_layer_destroy(transport_layer_t* tp_layer)
 {
 	if(tp_layer){
-		//free(x->send_timer);
-		//free(x->validate_timer);
 		free(tp_layer);
 	}	
 }
 
 void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t size)
 {	
-	if(tp_layer->send_timer == NULL){
-		transport_layer_timer_set(tp_layer, tp_layer->send_timer, 4);
-	}
+	printf("\n\ntransport_layer_app - adress tp_layer: %p\n", tp_layer);
+	printf("transport_layer_app - adress data: %p\n", data);
+	printf("transport_layer_app - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 
-	transport_package_t *pack = transport_pkg_create(data, size);
-	pack = transport_pkg_copy(pack);
-
-	tp_layer->app_window[tp_layer->send_timer->tick_count] = pack;
-
-	osi_tp2nw(tp_layer->osi_stack, pack); 
-	timer_tickall();
+	transport_package_t *pack = malloc(sizeof(transport_package_t));
+	pack = transport_pkg_create(data, size);
+	 
+	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
 	
-	tp_layer->send_timer->ctx = pack;
+
+	tp_layer->app_window[tp_layer->app_current] = pack;
+	tp_layer->app_window[tp_layer->app_current]->checksum = checksum(pack->data, pack->size);
+
+	printf("transport_layer_app - checksum: %d\n", tp_layer->app_window[tp_layer->app_current]->checksum);
+	printf("transport_layer_app - app_current: %d\n\n\n\n\n", tp_layer->app_current);
+
+	tp_layer->app_current = tp_layer->app_current + 1;
+	tp_layer->app_current = tp_layer->app_current % 4;	
+
+	osi_tp2nw(tp_layer->osi_stack, pack);
+
+	
+	
 }
 
 void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_t* tp_pkg)
 {
-
-	transport_package_t *a_packet = tp_layer->app_window[tp_layer->send_timer->tick_count]
-	transport_package_t *n_packet = tp_layer->net_window[tp_layer->send_timer->tick_count]
-	
-	if(a_packet->size == n_packet->size){
-		pkg_cpy->corrupt = false;
-
-	} else {
-		//printf("ADAM OG EVA\n\n\n\n");
-		//errno("invalid packet");
-		pack->corrupt = true;
-	}
-	
-}
-
 	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
-	tp_layer->net_window[tp_layer->send_timer->tick_count] = pkg_cpy
-	tp_layer->
 
+	printf("\n\ntransport_layer_net - adress tp_layer: %p\n", tp_layer);
+	printf("transport_layer_net - adress tp_pkg: %p\n", tp_pkg);
+	printf("transport_layer_net - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
 
-	if(tp_layer->validate_timer != NULL){
+	//printf("DATA_SIZE: %d\n", );
+	printf("transport_layer_net - app_current: %d", tp_layer->app_current);
+	printf("transport_layer_net - net_current: %d", tp_layer->net_current);
 
+	tp_layer->net_window[tp_layer->net_current] = pkg_cpy;
+	tp_layer->net_window[tp_layer->net_current]->checksum = checksum(pkg_cpy->data, pkg_cpy->size);
 
-		if(tp_layer->validate_timer->ctx->corrupt == true){
-			transport_package_t *packet = tp_layer->net_window[tp_layer->validate_timer->tick_count];
-			
-			if(packet->corrupt == true){
-				for(int i = 0; i <= 4; i++){
-					osi_tp2nw(tp_layer->osi_stack, tp_layer->app_window[]);
-				}
-				transport_layer_onLayerTimeout(tp_layer);
-			} else {
-				osi_tp2app(tp_layer->osi_stack, packet->data, packet->size);
-				transport_layer_timer_set()
-			}
+	printf("transport_layer_net - BEFORE CHECKSUM PRINTF\n");
+	printf("transport_layer_net - checksum app_window: %d\n", tp_layer->app_window[tp_layer->app_current]->checksum);
+	printf("transport_layer_net - checksum net_window: %d\n", tp_layer->net_window[tp_layer->net_current]->checksum);
+	printf("transport_layer_net - AFTER CHECKSUM PRINTF\n\n\n\n\n");
+	
+
+	if(tp_layer->fail_count == 5){
+		if(tp_layer->app_window[tp_layer->net_current]->checksum != tp_layer->net_window[tp_layer->net_current]->checksum){
+			timer_tickall();
 		}
+
+		osi_tp2app(tp_layer->osi_stack, tp_layer->net_window[tp_layer->net_current]->data, tp_layer->net_window[tp_layer->net_current]->size);
 	}
 
+	if(tp_layer->net_current == (tp_layer->fail_count - 1) % 4 && tp_layer->fail_count != 5){
+		resend_window(tp_layer);
+	}
+
+	tp_layer->net_current = tp_layer->net_current + 1;
+	tp_layer->net_current = tp_layer->net_current % 4;
 }	
 
 void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
 {
-	if(tp_layer->validate_timer == NULL || tp_layer->validate_timer->tick_count == tp_layer->validate_timer->target_ticks){
-		transport_layer_timer_set(tp_layer, tp_layer->validate_timer, 4);
-	} 
+	printf("timeout - adress tp_layer: %p\n\n\n\n\n", tp_layer);
+	tp_layer->fail_count = tp_layer->net_current;
+	transport_layer_timer_set(tp_layer, tp_layer->timeout, 10000);
+}
 
-	if(tp_layer->send_timer->tick_count == tp_layer->send_timer->target_ticks){
-		transport_layer_timer_set(tp_layer, tp_layer->validate_timer, 4);
+uint16_t checksum(void* data, size_t size){
+	char* c_data = (char*)data;
+
+	uint32_t acc = 0xffff;
+
+	for(size_t i = 0; i+1 < size; i+=2){
+		uint16_t word;
+		memcpy(&word, c_data+i, 2);
+
+		acc += ntohs(word);
+		if(acc > 0xffff){
+			acc -= 0xffff;
+		}
 	}
 
-	transport_layer_onNwReceive(tp_layer, tp_layer->app_window[tp_layer->validate_timer->tick_count]);
+	if(size & 1){
+		uint16_t word = 0;
+		memcpy(&word, c_data+size-1, 1);
+
+		acc += ntohs(word);
+		if(acc > 0xffff){
+			acc -= 0xffff;
+		}
+	}
+
+	return htons(~acc);
+}
+
+void resend_window(transport_layer_t* tp_layer){
+	printf("resend_window - adress tp_layer: %p\n\n\n\n", tp_layer);
+	transport_package_t *pack = malloc(sizeof(transport_package_t));
+	int fc = tp_layer->fail_count;
+
+	for(int i = 0; i <= 3; i++){
+		pack = tp_layer->app_window[fc];
+
+		osi_tp2nw(tp_layer->osi_stack, pack);
+
+		fc = (fc + 1) % 4;
+	}
+
+	tp_layer->fail_count = 5;
+	free(pack);
 }
 
 
