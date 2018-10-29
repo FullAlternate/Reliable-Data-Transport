@@ -22,10 +22,15 @@ struct transport_package
 	/// <summary>The number of bytes contained in the payload of the package.</summary>
 	/// <value>A positive unsigned integer value, or <c>0U</c> (zero) to signify an empty package.</value>
 	size_t size;
+	uint16_t checksum;
 	/// <summary>A reference to the payload of the package.</summary>
 	/// <value>A generic reference to a memory buffer that is at least <see cref="size"/> bytes long, or <c><see cref="NULL"/></c> if the package is empty.</value>
+	int control_pack;
+	int ack;
+	int number;
 	void* data;
-	uint16_t checksum;
+
+	
 };
 
 #endif // !TRANSPORT_PACKAGE_IMPL_H

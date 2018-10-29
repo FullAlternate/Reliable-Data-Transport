@@ -12,6 +12,7 @@
 #include "transport_layer.h"
 #include "transport_package_impl.h"
 #include "application_layer_impl.h"
+#include "list.h"
 
 /// <summary>Sets a tick timer object for the specified transport layer.</summary>
 /// <param name="tp_layer">A reference to the transport layer instance that sets the timer.</param>
@@ -34,44 +35,29 @@ struct transport_layer
 	/// <summary>A reference to the OSI-stack the transport layer belong to.</summary>
 	osi_stack_t* osi_stack;
 	tick_timer_t* timeout;
+	list_t* queue;	// List that holds the data sent from app_layer in the recieved order
 
-	transport_package_t* window[4];
-
-	int current;
-	int fail_count;
+	int ordering;	// Holds the number of the current packet expected to be recieved by the app_layer
+	int numbering; 	// Used for labeling the packets as they are sent
+	
 };
 
-// STUDENTS BEGIN:
-// Implementation for the transport layer
 
+// Creates and initializes the transport layer setting its starting values appropriately 
 transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 {
-	// Remember to assign the osi_stack parameter to the new transport layer object you create in this function.
-	printf("\n\ntransport_layer_create - adress osi_stack: %p\n", osi_stack);
 	transport_layer_t *transport_layer = malloc(sizeof(transport_layer_t));
-	printf("transport_layer_create - adress tp_layer: %p\n\n\n\n", osi_stack);
-
-	transport_layer->osi_stack = osi_stack;
-	transport_layer->current = 0;
-	transport_layer->fail_count = 5;
-
-	//transport_layer->window = calloc(4, sizeof(transport_package_t));
-
-	for(int i = 0; i <= 3; i++){
-		transport_layer->window[i] = malloc(sizeof(transport_package_t));
-		transport_layer->window[i]->data = NULL;
-		transport_layer->window[i]->size = 0;
-		transport_layer->window[i]->checksum = 0;
-	}
-	
-
-
 
 	transport_layer->timeout = malloc(sizeof(tick_timer_t));
-	transport_layer_timer_set(transport_layer, transport_layer->timeout, 10000);
+	transport_layer->queue = list_create();
+
+	transport_layer->ordering = 1;
+	transport_layer->numbering = 1;
+
+	transport_layer->osi_stack = osi_stack;
+	transport_layer_timer_set(transport_layer, transport_layer->timeout, 1000);
 	
 	if(transport_layer == NULL){
-		//errno("Out of memory");
 		return 0;
 	}
 
@@ -83,6 +69,7 @@ transport_layer_t* transport_layer_create(osi_stack_t* osi_stack)
 
 }
 
+// Destorys the transport_layer
 void transport_layer_destroy(transport_layer_t* tp_layer)
 {
 	if(tp_layer){
@@ -90,94 +77,109 @@ void transport_layer_destroy(transport_layer_t* tp_layer)
 	}	
 }
 
+// Creates a packet of the data recieved by the app_layer and copies it. Then calculates a checksum and labeles
+// it with a number used for ordering the data. Lastly sends the data to the network layer for corruption.
 void transport_layer_onAppSend(transport_layer_t* tp_layer, void* data, size_t size)
 {	
-
-	transport_package_t *pack = malloc(sizeof(transport_package_t));
-	pack = transport_pkg_create(data, size);
+	if(!tp_layer){
+		return;
+	}
 	
-	pack->checksum = checksum(pack->data, pack->size);
-	pack->original_package = pack;
-	//tp_layer->window[tp_layer->current] = pack;
+	else{
+		transport_package_t *tmp = transport_pkg_create(data, size);
+		transport_package_t *pack = transport_pkg_copy(tmp);
 
-	printf("\n\ntransport_layer_app - adress tp_layer: %p\n", tp_layer);
-	printf("transport_layer_app - adress data: %p\n", data);
-	printf("transport_layer_app - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
-	printf("transport_layer_app - ORIGINAL_SIZE: %d\n", (int)pack->size);
-	printf("transport_layer_app - checksum: %d\n", pack->checksum);
-	printf("transport_layer_app - current: %d\n\n\n\n\n", tp_layer->current);
+		transport_pkg_destroy(tmp);
 
-	//tp_layer->current++;
-	//tp_layer->current = tp_layer->current % 4;	
+		pack->checksum = checksum(pack->data, pack->size);
+		pack->number = tp_layer->numbering;
 
-	osi_tp2nw(tp_layer->osi_stack, pack);
+		list_addlast(tp_layer->queue, pack);
 
-	
-	
+		tp_layer->numbering++;
+		osi_tp2nw(tp_layer->osi_stack, pack);
+
+	}		
 }
 
+// Recieves the possibly corrupted data from the network layer, send it to the app_layer 
+// and creates a control_packet containing an ack or nack that is sent back to the sender. 
+// Then updates queue based on the control_packet.
 void transport_layer_onNwReceive(transport_layer_t* tp_layer, transport_package_t* tp_pkg)
 {
-	
-	transport_package_t *pkg_cpy = transport_pkg_copy(tp_pkg);
-	tp_pkg->original_package->checksum
+	transport_package_t *the_pack = NULL;
+	transport_package_t *control_pack = NULL;
+	int32_t localchecksum;
 
-	int32_t localchecksum = checksum(pkg_cpy->data, pkg_cpy->size);
-	tp_layer->window[tp_layer->current] = pkg_cpy;
+	// Handles the data if it is the requested data_packet
+	if(tp_pkg->control_pack == 0 && tp_pkg->number == tp_layer->ordering){
+		the_pack = transport_pkg_copy(tp_pkg);
 
-	
+		control_pack = the_pack;
+		control_pack->control_pack = 1;
 
-	printf("\n\ntransport_layer_net - adress tp_layer: %p\n", tp_layer);
-	printf("transport_layer_net - adress tp_pkg: %p\n", tp_pkg);
-	printf("transport_layer_net - adress tp_layer->osi_stack: %p\n", tp_layer->osi_stack);
-	printf("transport_layer_net - current: %d\n", tp_layer->current);
-	printf("transport_layer_net - BEFORE CHECKSUM PRINTF\n");
-	printf("transport_layer_net - checksum local: %d\n", localchecksum);
-	printf("transport_layer_net - checksum window: %d\n", tp_layer->window[tp_layer->current]->checksum);
-	printf("transport_layer_net - fail_count: %d\n", tp_layer->fail_count);
-	printf("transport_layer_net - AFTER CHECKSUM PRINTF\n\n\n\n\n");
-	
+		localchecksum = checksum(the_pack->data, the_pack->size);
+
+		// If the checksum does not match sets the ack value to false which is handles as a nack
+		if(localchecksum != the_pack->checksum){
+				control_pack->ack = 0;
+		
+		// Increases the ordered pack number by 1 and sends the pack to the app layer
+		} else {
+			printf("SENT PACK\n\n");
+
+			tp_layer->ordering++;
+			osi_tp2app(tp_layer->osi_stack, the_pack->data, the_pack->size);
+		}
+		
+		// Sends ack back to sender
+		osi_tp2nw(tp_layer->osi_stack, control_pack);
 
 
-	while(tp_layer->window[tp_layer->current]->checksum != localchecksum && tp_layer->fail_count == 5){
-		//printf("targetticks: %d\n", tp_layer->timeout->target_ticks);
-		tp_layer->timeout->tick_count++;
+	// Handles the data if it is a control packet
+	} else if (tp_pkg->control_pack == 1){
+		if(tp_layer->queue->head != NULL){
 
-		if(tp_layer->timeout->tick_count == tp_layer->timeout->target_ticks){
-			transport_layer_onLayerTimeout(tp_layer);
+			// Pops the first element in the queue if the controlpack contains an ack
+			if(tp_pkg->ack == 1){
+				list_popfirst(tp_layer->queue);
+
+			// Resends the head of the queue if the controlpack contains an nack
+			} else {
+				the_pack =  tp_layer->queue->head->elem;
+
+				osi_tp2nw(tp_layer->osi_stack, the_pack);
+			}
 		}
 	}
+}	
 
-	if(tp_layer->fail_count == 5){
-		printf("if validate KUUUUUK\n");
-		osi_tp2app(tp_layer->osi_stack, tp_layer->window[tp_layer->current]->data, tp_layer->window[tp_layer->current]->size);
-	}
+// Resets the timers and sends the remaining data left in the queue
+void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
+{
+	printf("TIMED OUT - %p\n\n", tp_layer);
 
-	tp_layer->current++;
-	tp_layer->current = tp_layer->current % 4;
-
-	//printf("MODULO: %d\n", stop);
-	if(tp_layer->current == tp_layer->fail_count && tp_layer->fail_count != 5){
-		printf("if resend KUUUUUK\n");
-		resend_window(tp_layer);
+	if(tp_layer->queue->head != NULL){
+		osi_tp2nw(tp_layer->osi_stack, tp_layer->queue->head->elem);
+		transport_layer_timer_set(tp_layer, tp_layer->timeout, 1000);
+		
 	}
 
 	
-}	
 
-void transport_layer_onLayerTimeout(transport_layer_t* tp_layer)
-{
-	printf("timeout - adress tp_layer: %p\n\n\n\n\n", tp_layer);
-
-	tp_layer->fail_count = tp_layer->current;
-	tp_layer->timeout->tick_count = 0;
+	
 }
 
+// Calculates the checksum of a packet
 uint16_t checksum(void* data, size_t size){
+	
+	// Casts data so it can be indexed
 	char* c_data = (char*)data;
 
+	// Sets acummulator to hex value
 	uint32_t acc = 0xffff;
 
+	// Handles a 16-bit block in the data
 	for(size_t i = 0; i+1 < size; i+=2){
 		uint16_t word;
 		memcpy(&word, c_data+i, 2);
@@ -188,6 +190,7 @@ uint16_t checksum(void* data, size_t size){
 		}
 	}
 
+	// Handles a partial block at the end of the data 
 	if(size & 1){
 		uint16_t word = 0;
 		memcpy(&word, c_data+size-1, 1);
@@ -199,24 +202,6 @@ uint16_t checksum(void* data, size_t size){
 	}
 
 	return htons(~acc);
-}
-
-void resend_window(transport_layer_t* tp_layer){
-	printf("resend_window - adress tp_layer: %p\n\n\n\n", tp_layer);
-
-	transport_package_t *pack = malloc(sizeof(transport_package_t));
-	int fc = tp_layer->fail_count;
-
-	for(int i = 0; i <= 3; i++){
-		pack = tp_layer->window[fc]->original_package;
-
-		osi_tp2nw(tp_layer->osi_stack, pack);
-
-		fc = (fc + 1) % 4;
-	}
-
-	tp_layer->fail_count = 5;
-	//free(pack);
 }
 
 
